@@ -7,8 +7,9 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
+from django.db.models import Q
 
-from .models import TelegramMessage
+from .models import TelegramMessage, TelegramPredict
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -20,7 +21,6 @@ class TelegramMessageView(View):
 
             telegram_message = await sync_to_async(TelegramMessage.objects.create)(
                 channel=data['channel'],
-                message_id=data['message_id'],
                 text=data['text'],
                 date=data['date']
             )
@@ -30,24 +30,61 @@ class TelegramMessageView(View):
 
     async def get(self, request, *args, **kwargs):
         try:
-            queryset = await database_sync_to_async(list)(TelegramMessage.objects.all().values())
-            return JsonResponse({"data": queryset}, status=status.HTTP_200_OK)
+            channel = request.GET.get('channel')
+            keywords = request.GET.get('keywords')
+            limit = int(request.GET.get('limit', 10))
+
+            query = TelegramMessage.objects.all()
+
+            if channel:
+                query = query.filter(channel=channel)
+
+            if keywords:
+                keyword_list = keywords.split(',')
+                query = query.filter(
+                    *[Q(text__icontains=keyword) for keyword in keyword_list]
+                )
+
+            query = query.order_by('id')[:limit]
+
+            messages = await database_sync_to_async(list)(query.values())
+            return JsonResponse({"data": messages}, status=status.HTTP_200_OK)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
-class TelegramChannelMessagesView(View):
+class TelegramPredictView(View):
+
+    async def post(self, request, *args, **kwargs):
+        try:
+            data = json.loads(request.body)
+
+            telegram_predict, created = await database_sync_to_async(TelegramPredict.objects.update_or_create)(
+                channel=data['channel'],
+                defaults={'prediction': data['prediction']}
+            )
+
+            return JsonResponse({"status": "Created" if created else "Updated"}, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     async def get(self, request, *args, **kwargs):
         try:
             channel = request.GET.get('channel')
-            if not channel:
-                return JsonResponse({"error": "Channel is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-            messages = await database_sync_to_async(list)(
-                TelegramMessage.objects.filter(channel=channel).order_by('id').values()
-            )
-            return JsonResponse({"data": messages}, status=status.HTTP_200_OK)
+            if channel:
+                predict = await database_sync_to_async(TelegramPredict.objects.get)(channel=channel)
+                data = {
+                    'channel': predict.channel,
+                    'prediction': predict.prediction,
+                    'updated_at': predict.updated_at,
+                }
+                return JsonResponse({"data": data}, status=status.HTTP_200_OK)
+            else:
+                queryset = await database_sync_to_async(list)(TelegramPredict.objects.all().values())
+                return JsonResponse({"data": queryset}, status=status.HTTP_200_OK)
+        except TelegramPredict.DoesNotExist:
+            return JsonResponse({"error": "Predict for the given channel does not exist"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,8 +1,8 @@
 from django.urls import path
-from .views import TelegramMessageView, TelegramChannelMessagesView
+from .views import TelegramMessageView, TelegramPredictView
 
 urlpatterns = [
-    path('messages/', TelegramMessageView.as_view(), name='telegram-messages'),
-    path('channel_messages/', TelegramChannelMessagesView.as_view(), name='telegram-channel-messages'),
+    path('message/', TelegramMessageView.as_view(), name='telegram-message'),
+    path('predict/', TelegramPredictView.as_view(), name='telegram-predict'),
 ]
 
