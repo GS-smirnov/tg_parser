@@ -28,3 +28,18 @@ services:
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5432:5432"
+
+  bot:
+    build:
+      context: .
+      dockerfile: tg_bots/predict_bot/Dockerfile
+    volumes:
+      - ./tg_bots/predict_bot:/bot
+    depends_on:
+      - web
+    environment:
+      - TELEGRAM_BOT_API_TOKEN=your_telegram_bot_api_token
+      - PREDICT_API_URL=http://backend:8000/api/predict/
+      - PARSE_API_URL=http://backend:8000/parse_channels/
+      - FILTERED_MESSAGES_URL=http://backend:8000/api/filtered_messages/
+      - OPENAI_API_KEY=your_openai_api_key

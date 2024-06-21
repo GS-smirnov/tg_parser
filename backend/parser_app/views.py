@@ -10,6 +10,8 @@ from rest_framework import status
 from django.db.models import Q
 from django.db.models.functions import Lower
 from .parser import parse_telegram_channel
+from openai import OpenAI
+import os
 
 from .models import Messages, Predicts, Companies, Keywords, Channels
 
@@ -182,3 +184,73 @@ class ParseTelegramChannelsView(View):
             return JsonResponse({"status": "Parsing started for all channels"}, status=status.HTTP_200_OK)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+API_KEY = 'apikey'
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class GeneratePredictionView(View):
+
+    async def post(self, request, *args, **kwargs):
+        try:
+            data = json.loads(request.body)
+            company_name = data.get('company')
+
+            if not company_name:
+                return JsonResponse({"error": "Company name is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+            company_exists = await database_sync_to_async(Companies.objects.filter(company__iexact=company_name).exists)()
+            if not company_exists:
+                return JsonResponse({"error": "Company not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            # Получаем фильтрованные сообщения
+            keywords_obj = await database_sync_to_async(Keywords.objects.first)()
+            if not keywords_obj:
+                return JsonResponse({"error": "Keywords not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            keywords = keywords_obj.keywords.split(':')
+            messages = Messages.objects.annotate(lower_text=Lower('text')).filter(lower_text__icontains=company_name.lower()).order_by('date')
+
+            query = Q()
+            for keyword_group in keywords:
+                group_query = Q()
+                for keyword in keyword_group.split(','):
+                    group_query |= Q(lower_text__icontains=keyword.lower())
+                query &= group_query
+
+            filtered_messages = await database_sync_to_async(list)(messages.filter(query).values('text'))
+
+            if not filtered_messages:
+                return JsonResponse({"error": "No messages found for the company"}, status=status.HTTP_404_NOT_FOUND)
+
+            combined_texts = " ".join([msg['text'] for msg in filtered_messages])
+
+            # Отправляем тексты в GPT-3.5 и получаем ответ
+            gpt_response = await get_gpt_response(combined_texts)
+
+            # Сохраняем ответ в таблицу Predicts
+            await database_sync_to_async(Predicts.objects.update_or_create)(
+                company=company_name,
+                defaults={'prediction': gpt_response}
+            )
+
+            return JsonResponse({"status": "Prediction generated and saved successfully"}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+async def get_gpt_response(text: str) -> str:
+    client = OpenAI(
+        api_key=API_KEY
+    )
+    prompt = f"Analyze the following messages and provide a summary:\n\n{text}"
+    try:
+        response = await client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=prompt,
+            max_tokens=150
+        )
+        return response.choices[0].message
+    except Exception as e:
+        print(e)
+        return "Произошла ошибка при обработке текста с помощью GPT-3.5."
