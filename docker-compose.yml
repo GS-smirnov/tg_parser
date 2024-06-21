@@ -1,0 +1,30 @@
+version: '3.7'
+
+networks:
+  net:
+    driver: bridge
+
+services:
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    networks:
+      - net
+    ports:
+      - "8000:8000"
+    depends_on:
+      - default
+
+  default:
+    image: postgres:15
+    networks:
+      - net
+    environment:
+      POSTGRES_DB: default
+      POSTGRES_USER: adminuser #$POSTGRES_USER
+      POSTGRES_PASSWORD: 12345 #$POSTGRES_PASSWORD
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
