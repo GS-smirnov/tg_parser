@@ -9,8 +9,9 @@ from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from django.db.models import Q
 from django.db.models.functions import Lower
+from .parser import parse_telegram_channel
 
-from .models import Messages, Predicts, Companies, Keywords
+from .models import Messages, Predicts, Companies, Keywords, Channels
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -158,9 +159,26 @@ class CompanyMessagesView(View):
                     group_query |= Q(lower_text__icontains=keyword.lower())
                 query &= group_query
 
-            filtered_messages = messages.filter(query)[:limit]
+            filtered_messages = messages.filter(query).values('id', 'uuid', 'channel', 'text', 'date')[:limit]
 
-            results = await database_sync_to_async(list)(filtered_messages.values())
+            results = await database_sync_to_async(list)(filtered_messages)
             return JsonResponse({"data": results}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class ParseTelegramChannelsView(View):
+
+    def post(self, request, *args, **kwargs):
+        try:
+            channels = Channels.objects.all()
+            if not channels:
+                return JsonResponse({"error": "No channels found"}, status=status.HTTP_404_NOT_FOUND)
+
+            for channel in channels:
+                parse_telegram_channel(channel.channel)
+
+            return JsonResponse({"status": "Parsing started for all channels"}, status=status.HTTP_200_OK)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
