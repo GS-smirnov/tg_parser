@@ -27,9 +27,9 @@ logging.basicConfig(level=logging.INFO)
 
 @dp.message_handler(commands=['start'])
 async def send_welcome(message: types.Message):
-    keyboard = InlineKeyboardMarkup().add(InlineKeyboardButton('Получить предсказание', callback_data='get_prediction'))
+    keyboard = InlineKeyboardMarkup().add(InlineKeyboardButton('Получить прогноз по компании', callback_data='get_prediction'))
     keyboard.add(InlineKeyboardButton('Запустить парсинг', callback_data='start_parsing'))
-    keyboard.add(InlineKeyboardButton('Фильтровать сообщения', callback_data='filter_messages'))
+    keyboard.add(InlineKeyboardButton('Обработать последние новости', callback_data='filter_messages'))
     await message.reply(
         "Добро пожаловать! Нажмите кнопку ниже, чтобы получить предсказание, запустить парсинг или фильтровать сообщения.",
         reply_markup=keyboard)
@@ -110,7 +110,7 @@ def get_gpt_response(text: str) -> str:
     prompt = f"Analyze the following messages and provide a summary:\n\n{text}"
     try:
         response = openai.Completion.create(
-            model="text-davinci-003",
+            model="gpt3.5-turbo",
             prompt=prompt,
             max_tokens=150
         )
