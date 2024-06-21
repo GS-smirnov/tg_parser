@@ -110,10 +110,10 @@ class PredictsView(View):
 
     async def get(self, request, *args, **kwargs):
         try:
-            channel = request.GET.get('channel')
+            company = request.GET.get('company')
 
-            if channel:
-                predict = await database_sync_to_async(Predicts.objects.get)(channel=channel)
+            if company:
+                predict = await database_sync_to_async(Predicts.objects.get)(company=company)
                 data = {
                     'company': predict.company,
                     'prediction': predict.prediction,
